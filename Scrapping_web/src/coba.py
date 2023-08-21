@@ -1,42 +1,88 @@
+# Import Library
 import requests
+from requests import get
 from bs4 import BeautifulSoup
+import pandas as pd
+import numpy as np
 
-class _IMDbScraper:
-    def __init__(self):
-        self._url = "https://www.imdb.com/chart/top"
-        self._response = None
-        self._soup = None
+# Global Variabel URL
+imdb_url = "https://www.imdb.com/search/title/?groups=top_100&ref_=adv_prv"
 
-    def _fetch_page(self):
-        self._response = requests.get(self._url)
-        if self._response.status_code == 200:
-            self._soup = BeautifulSoup(self._response.text, "html.parser")
+# header for accepted
+headers = {"Accept-Language": "en-US, en;q=0.5"}
 
-    def _extract_movie_elements(self):
-        return self._soup.find("tbody", class_="lister-list").find_all("tr")
+# Save Response from url
+results = requests.get(imdb_url, headers=headers)
+        
+# Step 5: Parse the results object to movie_soup using the html parser.
+movie_soup = BeautifulSoup(results.text, "html.parser")
 
-    def _get_movie_details(self, movie_element):
-        title = movie_element.find("td", class_="titleColumn").find("a").text
-        year = movie_element.find("span", class_="secondaryInfo").text.strip("()")
-        rating = movie_element.find("td", class_="ratingColumn").find("strong").text
-        return {"Title": title, "Year": year, "Rating": rating}
+# Step 6: I want to extract these attributes (to a list) from the movie_soup.
+movie_name = []
+movie_years = []
+movie_runtime = []
+imdb_ratings = []
+metascores = []
+number_votes = []
+us_gross = []
 
-    def get_top_movies(self):
-        self._fetch_page()
-        movie_elements = self._extract_movie_elements()
-        movies = [self._get_movie_details(movie) for movie in movie_elements]
-        return movies
+# Step 7: Create a movie_div object to find all div objects in movie_soup.
+movie_div = movie_soup.find_all('div', class_='lister-item mode-advanced')
 
+# Step 8: Loop through each object in the movie_div.
+for container in movie_div:
 
-def main():
-    scraper = _IMDbScraper()
-    top_movies = scraper.get_top_movies()
-    for movie in top_movies:
-        print("Title:", movie["Title"])
-        print("Year:", movie["Year"])
-        print("Rating:", movie["Rating"])
-        print()
+# Step 9: Add each result from each attribute for each list.
 
+    # name
+    name = container.h3.a.text
+    movie_name.append(name)
 
-if __name__ == "__main__":
-    main()
+    # year
+    year = container.h3.find('span', class_='lister-item-year').text
+    movie_years.append(year)
+
+    # runtime
+    runtime = container.p.find('span', class_='runtime').text if container.p.find('span', class_='runtime').text else '-'
+    movie_runtime.append(runtime)
+
+    # IMDB rating
+    imdb = float(container.strong.text)
+    imdb_ratings.append(imdb)
+
+    # metascore
+    m_score = container.find('span', class_='metascore').text if container.find('span', class_='metascore') else '-'
+    metascores.append(m_score)
+
+    # There are two NV containers, grab both of them as they hold both the votes and the grosses
+    nv = container.find_all('span', attrs={'name': 'nv'})
+
+    # filter nv for votes
+    vote = nv[0].text
+    number_votes.append(vote)
+
+    # filter nv for gross
+    grosses = nv[1].text if len(nv) > 1 else '-'
+    us_gross.append(grosses)
+
+# Step 10: Build and store all of the attributes into the Pandas movie dataframe.        
+movies = pd.DataFrame({
+'movie_name': movie_name,
+'movie_year': movie_years,
+'movie_runtime': movie_runtime,
+'imdb_ratings': imdb_ratings,
+'metascore': metascores,
+'number_votes': number_votes,
+'us_gross_millions': us_gross,
+})
+
+# Step 11: Use Pandas str.extract to remove all String characters, and save the value as type int for cleaning up the data with Pandas.
+movies['movie_year'] = movies['movie_year'].str.extract('(\d+)').astype(int)
+movies['movie_runtime'] = movies['movie_runtime'].str.extract('(\d+)').astype(int)
+movies['metascore'] = movies['metascore'].astype(int)
+movies['number_votes'] = movies['number_votes'].str.replace(',', '').astype(int)
+movies['us_gross_millions'] = movies['us_gross_millions'].map(lambda x: x.lstrip('$').rstrip('M'))
+movies['us_gross_millions'] = pd.to_numeric(movies['us_gross_millions'], errors='coerce')
+
+# Step 12: Export our movie results to a pretty little .csv file.
+movies.to_csv('top_100_movies.csv')
