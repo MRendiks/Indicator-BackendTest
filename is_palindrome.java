@@ -20,20 +20,6 @@ class CheckIsPalindrome
     public static boolean IsPalindrome(String data)
     {
         data = data.replaceAll("[^a-zA-Z]", "").toLowerCase();
-        // int length_data = data.length();
-
-        // int left = 0;
-        // int right = data.length() - 1;
-        
-        // while (left < right) {
-        //     if (data.charAt(left) != data.charAt(right)) {
-        //         return false;
-        //     }
-        //     left++;
-        //     right--;
-        // }
-        // return true;
-        
         String reverse = "";
         int length = data.length();   
         for ( int i = length - 1; i >= 0; i-- )  
