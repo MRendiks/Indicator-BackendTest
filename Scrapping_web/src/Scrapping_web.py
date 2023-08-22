@@ -5,8 +5,11 @@ from bs4 import BeautifulSoup
 import pandas as pd
 import numpy as np
 import os
+import csv
+import mysql.connector
 
 URL_FILE = "Indicator-BackendTest/Scrapping_web/File/"
+
 loop = 1
 
 class _IMDB100Scrapper:
@@ -94,17 +97,123 @@ class _IMDB100Scrapper:
         # generate top 100 movies
         try:
             global loop
-            print(loop)
             if os.path.exists(URL_FILE + "top_100_movies.csv"):
                 self._movies.to_csv(f'{URL_FILE}top_100_movies{loop}.csv', index=False)
                 self._increment_loop()
                 return print("CSV file saved successfully.")
             else:
-                self._movies.to_csv(f'{URL_FILE}top_100_movies.csv', index=False)
+                self._movies.to_csv(f'{URL_FILE}top_100_movies{loop}.csv', index=False)
                 self._increment_loop()
                 return print("CSV file saved successfully.")
         except Exception as e:
             return print("An error occurred while saving the CSV file:", e)
+
+
+class _Database:
+    def __init__(self):
+        self._connection = None
+        self._cursor = None
+    
+    def _connect_database_1(self):
+        self._connection = mysql.connector.connect(
+            host='localhost',
+            user='root',
+            password=''
+        )
+    
+    def _connect_database_2(self):
+        self._connection = mysql.connector.connect(
+            host='localhost',
+            user='root',
+            password='',
+            database='db_test_api_movie'
+        )
+    
+    def _create_database(self):
+        self._connect_database_1()
+        self._cursor = self._connection.cursor()
+        try:
+            query = f"CREATE DATABASE db_test_api_movie"
+            self._cursor.execute(query)
+            print("Create Database executed successfully.")
+        except mysql.connector.Error as err:
+            print(f"Error: {err}")
+        self._cursor.close()
+        self._connection.close()
+    
+    def _create_table(self):
+        self._connect_database_2()
+        self._cursor = self._connection.cursor()
+        try:
+            query = """
+            CREATE TABLE movie(
+                movie_id INT AUTO_INCREMENT PRIMARY KEY,
+                movie_name VARCHAR(255),
+                movie_year INT(4),
+                movie_runtime INT(4),
+                imdb_ratings FLOAT,
+                metascore INT(3),
+                number_votes INT,
+                us_gross_millions FLOAT
+            )
+            """
+            self._cursor.execute(query)
+            self._connection.commit()
+            print("Create Table executed successfully.")
+            self._cursor.close()
+            self._connection.close()
+            return True
+        except mysql.connector.Error as err:
+            print(f"Error: {err}")
+            self._cursor.close()
+            self._connection.close()
+            return False
+        
+    
+    def _insert_data_table(self):
+        self._connect_database_2()
+        self._cursor = self._connection.cursor()
+        data_to_insert = []
+        with open(URL_FILE+'/'+'top_100_movies_final.csv', 'r') as file:
+            csv_reader = csv.reader(file)
+            header = next(csv_reader) 
+            for row in csv_reader:
+                data_to_insert.append(row)
+                
+        try:    
+            insert_query = f"INSERT INTO movie ( {', '.join(header)}) VALUES ({', '.join(['%s'] * len(header))})"
+            self._cursor.executemany(insert_query, data_to_insert)
+            self._cursor.close()
+            self._connection.commit()
+            print("Insert Data executed successfully.")
+            
+        except mysql.connector.Error as err:
+            print(f"Error: {err}")
+            
+    
+    def run_database(self):
+        self._create_database()
+        check = self._create_table()
+        
+        if(check==True):
+            self._insert_data_table()
+
+def concat_df():
+    
+    dfs_to_concat = []
+    if os.path.exists(URL_FILE) and os.path.isdir(URL_FILE):
+        files = os.listdir(URL_FILE)
+        for file in files:
+            if os.path.isfile(os.path.join(URL_FILE, file)):
+                with open(URL_FILE+'/'+file, 'r') as file:
+                    df = pd.read_csv(file)
+                    dfs_to_concat.append(df)
+    else:
+        print(f"The folder '{URL_FILE}' does not exist or is not a valid directory.")
+    
+    result = pd.concat(dfs_to_concat, ignore_index=True)
+    result.to_csv(f'{URL_FILE}top_100_movies_final.csv', index=False)
+    return True
 
 def main():
     urls = [
@@ -115,6 +224,17 @@ def main():
     for url in urls:    
         scrapper = _IMDB100Scrapper(url)
         scrapper.get_top_movies_csv()
+    
+    try:
+        concat_df()
+        print("\nFile Final saved successfully")
+    except:
+        print("\nFile Final saved Not successfully")
+    
+    # DATABASE
+    database = _Database()
+    database.run_database()
+
 
 if __name__ == "__main__":
     main()
